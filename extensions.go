@@ -736,6 +736,53 @@ func (c *Client) MissedTickets() ([]*chainhash.Hash, error) {
 	return c.MissedTicketsAsync().Receive()
 }
 
+// FutureExpiredTicketsResult is a future promise to deliver the result
+// of a FutureExpiredTicketsResultAsync RPC invocation (or an applicable error).
+type FutureExpiredTicketsResult chan *response
+
+// Receive waits for the response promised by the future and returns all
+// currently missed tickets from the missed ticket database.
+func (r FutureExpiredTicketsResult) Receive() ([]*chainhash.Hash, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal the result as a dcrjson.ExpiredTicketsResult.
+	var container dcrjson.ExpiredTicketsResult
+	err = json.Unmarshal(res, &container)
+	if err != nil {
+		return nil, err
+	}
+
+	missedTickets := make([]*chainhash.Hash, 0, len(container.Tickets))
+	for _, ticketStr := range container.Tickets {
+		h, err := chainhash.NewHashFromStr(ticketStr)
+		if err != nil {
+			return nil, err
+		}
+		missedTickets = append(missedTickets, h)
+	}
+
+	return missedTickets, nil
+}
+
+// ExpiredTicketsAsync returns an instance of a type that can be used to get the
+// result of the RPC at some future time by invoking the Receive function on the
+// returned instance.
+func (c *Client) ExpiredTicketsAsync() FutureExpiredTicketsResult {
+	cmd := dcrjson.NewExpiredTicketsCmd()
+	return c.sendCmd(cmd)
+}
+
+// ExpiredTickets returns all currently missed tickets from the missed
+// ticket database in the daemon.
+//
+// NOTE: This is a dcrd extension.
+func (c *Client) ExpiredTickets() ([]*chainhash.Hash, error) {
+	return c.ExpiredTicketsAsync().Receive()
+}
+
 // FutureSessionResult is a future promise to deliver the result of a
 // SessionAsync RPC invocation (or an applicable error).
 type FutureSessionResult chan *response
